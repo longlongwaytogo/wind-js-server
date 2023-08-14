@@ -58,7 +58,9 @@ app.get('/latest', cors(corsOptions), function(req, res){
 		});
 	}
 
-	sendLatest(moment().utc());
+	// 获取前一天的
+	//sendLatest(moment().utc());
+	sendLatest(moment().day(-1).utc());
 
 });
 
@@ -76,7 +78,7 @@ app.get('/nearest', cors(corsOptions), function(req, res, next){
 	 */
 	function sendNearestTo(targetMoment){
 
-		if( limit && Math.abs( moment.utc(time).diff(targetMoment, 'days'))  >= limit) {
+		if( limit && Math.abs( moment().day(-1).utc(time).diff(targetMoment, 'days'))  >= limit) {
 			if(!searchForwards){
 				searchForwards = true;
 				sendNearestTo(moment(targetMoment).add(limit, 'days'));
@@ -88,6 +90,7 @@ app.get('/nearest', cors(corsOptions), function(req, res, next){
 		}
 
 		var stamp = moment(targetMoment).format('YYYYMMDD') + roundHours(moment(targetMoment).hour(), 6);
+		//var stamp = moment(targetMoment).format('YYYYMMDD') + '/'+ roundHours(moment(targetMoment).hour(), 6)+'/atmos';
 		var fileName = __dirname +"/json-data/"+ stamp +".json";
 
 		res.setHeader('Content-Type', 'application/json');
@@ -100,7 +103,7 @@ app.get('/nearest', cors(corsOptions), function(req, res, next){
 	}
 
 	if(time && moment(time).isValid()){
-		sendNearestTo(moment.utc(time));
+		sendNearestTo(moment().day(-1).utc(time));
 	}
 	else {
 		return next(new Error('Invalid params, expecting: timeIso=ISO_TIME_STRING'));
@@ -115,7 +118,7 @@ app.get('/nearest', cors(corsOptions), function(req, res, next){
  */
 setInterval(function(){
 
-	run(moment.utc());
+	run(moment().day(-1).utc());
 
 }, 900000);
 
@@ -145,15 +148,18 @@ function getGribData(targetMoment){
 	function runQuery(targetMoment){
 
         // only go 2 weeks deep
-		if (moment.utc().diff(targetMoment, 'days') > 30){
+		if (moment().day(-1).utc().diff(targetMoment, 'days') > 30){
 	        console.log('hit limit, harvest complete or there is a big gap in data..');
             return;
         }
 
-		var stamp = moment(targetMoment).format('YYYYMMDD') + roundHours(moment(targetMoment).hour(), 6);
+		//var stamp = moment(targetMoment).format('YYYYMMDD') + roundHours(moment(targetMoment).hour(), 6);
+		var stamp = moment(targetMoment).format('YYYYMMDD') + '/'+ roundHours(moment(targetMoment).hour(), 6)+'/atmos';
+		var writestamp = moment(targetMoment).format('YYYYMMDD') + roundHours(moment(targetMoment).hour(), 6);
 		request.get({
 			url: baseDir,
 			qs: {
+				
 				file: 'gfs.t'+ roundHours(moment(targetMoment).hour(), 6) +'z.pgrb2.1p00.f000',
 				lev_10_m_above_ground: 'on',
 				lev_surface: 'on',
@@ -181,7 +187,7 @@ function getGribData(targetMoment){
 
 			else {
 				// don't rewrite stamps
-				if(!checkPath('json-data/'+ stamp +'.json', false)) {
+				if(!checkPath('json-data/'+ writestamp +'.json', false)) {
 
 					console.log('piping ' + stamp);
 
@@ -189,16 +195,16 @@ function getGribData(targetMoment){
 					checkPath('grib-data', true);
 
 					// pipe the file, resolve the valid time stamp
-					var file = fs.createWriteStream("grib-data/"+stamp+".f000");
+					var file = fs.createWriteStream("grib-data/"+writestamp+".f000");
 					response.pipe(file);
 					file.on('finish', function() {
 						file.close();
-						deferred.resolve({stamp: stamp, targetMoment: targetMoment});
+						deferred.resolve({stamp: writestamp, targetMoment: targetMoment});
 					});
 
 				}
 				else {
-					console.log('already have '+ stamp +', not looking further');
+					console.log('already have '+ writestamp +', not looking further');
 					deferred.resolve({stamp: false, targetMoment: false});
 				}
 			}
@@ -217,7 +223,9 @@ function convertGribToJson(stamp, targetMoment){
 
 	var exec = require('child_process').exec, child;
 
-	child = exec('converter/bin/grib2json --data --output json-data/'+stamp+'.json --names --compact grib-data/'+stamp+'.f000',
+	//child = exec('converter/bin/grib2json --data --output json-data/'+stamp+'.json --names --compact grib-data/'+stamp+'.f000',
+	// windows 平台需要命令使用引号，或者反斜杠才行
+	child = exec('"converter/bin/grib2json" --data --output json-data/'+stamp+'.json --names --compact grib-data/'+stamp+'.f000',
 		{maxBuffer: 500*1024},
 		function (error, stdout, stderr){
 
@@ -285,4 +293,4 @@ function checkPath(path, mkdir) {
 }
 
 // init harvest
-run(moment.utc());
+run(moment().day(-1).utc());
